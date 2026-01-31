@@ -52,7 +52,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 35D088F42F2CFF3E000809F8 /* Build configuration list for PBXNativeTarget "mac-ai-toolkit" */;
 			buildPhases = (
-				35D088E52F2CFF3D000809F8 /* Sources */,
 				35D088E62F2CFF3D000809F8 /* Frameworks */,
 				35D088E72F2CFF3D000809F8 /* Resources */,
 			);
@@ -113,16 +112,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXSourcesBuildPhase section */
-		35D088E52F2CFF3D000809F8 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
 		35D088F22F2CFF3E000809F8 /* Debug */ = {
