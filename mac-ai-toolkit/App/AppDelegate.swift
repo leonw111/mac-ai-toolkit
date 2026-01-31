@@ -7,158 +7,195 @@
 
 import AppKit
 import SwiftUI
+import OSLog
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-
+    
+    // MARK: - Properties
+    
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "AppDelegate")
+    
+    // MARK: - Lifecycle
+    
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Register global keyboard shortcuts
-        KeyboardShortcutsManager.shared.registerDefaultShortcuts()
-
-        // Start HTTP server if enabled
-        if AppState.shared.settings.apiEnabled {
-            Task {
-                do {
-                    try await HTTPServer.shared.start(port: AppState.shared.settings.apiPort)
-                    await MainActor.run {
-                        AppState.shared.isServerRunning = true
-                    }
-                } catch {
-                    print("Failed to start HTTP server: \(error)")
-                }
-            }
-        }
-
-        // Setup notification observers
-        setupNotificationObservers()
-
-        // Clean old history if needed
+        logger.info("应用启动")
+        
         Task {
-            await cleanOldHistory()
+            await setupApplication()
         }
     }
-
+    
     func applicationWillTerminate(_ notification: Notification) {
-        // Stop HTTP server
+        logger.info("应用退出")
+        
         Task {
-            await HTTPServer.shared.stop()
+            await cleanup()
         }
-
-        // Unregister shortcuts
-        KeyboardShortcutsManager.shared.unregisterAll()
-
-        // Save settings
-        AppState.shared.settings.save()
     }
-
+    
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        // Keep running in menu bar after closing main window
+        // 关闭主窗口后继续在菜单栏运行
         false
     }
-
+    
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
     }
-
-    // MARK: - Private
-
+    
+    // MARK: - Setup
+    
+    private func setupApplication() async {
+        // 注册全局快捷键
+        KeyboardShortcutsManager.shared.registerDefaultShortcuts()
+        
+        // 设置通知监听
+        setupNotificationObservers()
+        
+        // 启动 HTTP 服务器（如果启用）
+        await startServerIfNeeded()
+        
+        // 清理旧历史记录
+        await cleanOldHistory()
+    }
+    
+    private func startServerIfNeeded() async {
+        guard AppState.shared.settings.apiEnabled else { return }
+        
+        do {
+            try await HTTPServer.shared.start(port: AppState.shared.settings.apiPort)
+            await MainActor.run {
+                AppState.shared.isServerRunning = true
+            }
+            logger.info("HTTP 服务器已启动")
+        } catch {
+            logger.error("启动 HTTP 服务器失败: \(error.localizedDescription)")
+        }
+    }
+    
+    private func cleanup() async {
+        // 停止服务器
+        await HTTPServer.shared.stop()
+        
+        // 注销快捷键
+        KeyboardShortcutsManager.shared.unregisterAll()
+        
+        // 保存设置
+        AppState.shared.settings.save()
+        
+        logger.info("清理完成")
+    }
+    
+    // MARK: - Notification Observers
+    
     private func setupNotificationObservers() {
-        NotificationCenter.default.addObserver(
-            forName: .screenshotOCR,
-            object: nil,
-            queue: .main
-        ) { _ in
-            self.handleScreenshotOCR()
+        let center = NotificationCenter.default
+        
+        center.addObserver(forName: .screenshotOCR, object: nil, queue: .main) { [weak self] _ in
+            self?.handleScreenshotOCR()
         }
-
-        NotificationCenter.default.addObserver(
-            forName: .clipboardOCR,
-            object: nil,
-            queue: .main
-        ) { _ in
-            self.handleClipboardOCR()
+        
+        center.addObserver(forName: .clipboardOCR, object: nil, queue: .main) { [weak self] _ in
+            self?.handleClipboardOCR()
         }
-
-        NotificationCenter.default.addObserver(
-            forName: .quickTTS,
-            object: nil,
-            queue: .main
-        ) { _ in
-            self.handleQuickTTS()
+        
+        center.addObserver(forName: .quickTTS, object: nil, queue: .main) { [weak self] _ in
+            self?.handleQuickTTS()
         }
-
-        NotificationCenter.default.addObserver(
-            forName: .quickSTT,
-            object: nil,
-            queue: .main
-        ) { _ in
-            self.handleQuickSTT()
+        
+        center.addObserver(forName: .quickSTT, object: nil, queue: .main) { [weak self] _ in
+            self?.handleQuickSTT()
         }
     }
-
+    
+    // MARK: - Notification Handlers
+    
     private func handleScreenshotOCR() {
-        // TODO: Implement screenshot capture and OCR
-        print("Screenshot OCR triggered")
+        logger.info("截图 OCR 触发")
+        // TODO: 实现截图捕获和 OCR
     }
-
+    
     private func handleClipboardOCR() {
+        logger.info("剪贴板 OCR 触发")
+        
         guard let image = ImageUtils.imageFromClipboard() else {
-            print("No image in clipboard")
+            logger.warning("剪贴板中没有图像")
             return
         }
-
+        
         Task {
             do {
                 let result = try await OCRService.shared.recognizeText(from: image)
+                
                 await MainActor.run {
-                    // Copy result to clipboard
+                    // 复制结果到剪贴板
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(result.text, forType: .string)
-
-                    // Add to history
+                    
+                    // 添加到历史记录
                     HistoryService.shared.addRecord(
                         type: .ocr,
-                        content: "[Clipboard Image]",
+                        content: "[剪贴板图像]",
                         result: result.text
                     )
                 }
+                
+                logger.info("OCR 识别成功")
             } catch {
-                print("OCR failed: \(error)")
+                logger.error("OCR 识别失败: \(error.localizedDescription)")
             }
         }
     }
-
+    
     private func handleQuickTTS() {
+        logger.info("快速 TTS 触发")
+        
         guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
-            print("No text in clipboard")
+            logger.warning("剪贴板中没有文本")
             return
         }
-
+        
         Task {
             do {
                 try await TTSService.shared.speak(text: text)
-
+                
                 await MainActor.run {
                     HistoryService.shared.addRecord(
                         type: .tts,
                         content: text,
-                        result: "[Audio playback]"
+                        result: "[音频播放]"
                     )
                 }
+                
+                logger.info("TTS 播放成功")
             } catch {
-                print("TTS failed: \(error)")
+                logger.error("TTS 播放失败: \(error.localizedDescription)")
             }
         }
     }
-
+    
     private func handleQuickSTT() {
-        // TODO: Implement quick recording
-        print("Quick STT triggered")
+        logger.info("快速 STT 触发")
+        // TODO: 实现快速录音
     }
-
+    
+    // MARK: - Maintenance
+    
     private func cleanOldHistory() async {
         let retentionDays = AppState.shared.settings.historyRetentionDays
+        
         await MainActor.run {
             HistoryService.shared.clearHistory(olderThan: retentionDays)
         }
+        
+        logger.info("清理了 \(retentionDays) 天前的历史记录")
     }
 }
+// MARK: - Notification Names
+
+extension Notification.Name {
+    static let screenshotOCR = Notification.Name("screenshotOCR")
+    static let clipboardOCR = Notification.Name("clipboardOCR")
+    static let quickTTS = Notification.Name("quickTTS")
+    static let quickSTT = Notification.Name("quickSTT")
+}
+
